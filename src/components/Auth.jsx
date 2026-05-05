@@ -35,8 +35,13 @@ export default function Auth() {
       : await supabase.auth.signUp(params)
     if (error) {
       setError(error.message)
-    } else if (!isLogin && (!data.user || !data.session)) {
-      setVerifying(true)
+    } else if (!isLogin) {
+      // Supabase returns empty identities for already-registered emails
+      if (data.user?.identities?.length === 0) {
+        setError('This email is already registered. Try logging in instead.')
+      } else if (!data.session) {
+        setVerifying(true)
+      }
     }
     setLoading(false)
   }, [isLogin, email, password])
