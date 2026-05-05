@@ -1,6 +1,20 @@
-import { useState } from 'react'
+import { useState, memo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '../lib/supabase'
+
+const AuthTab = memo(({ tab, active, onClick }) => (
+  <button
+    className={`auth-tab ${active ? 'active' : ''} flex-grow-1`}
+    onClick={() => onClick(tab)}
+  >
+    {tab}
+    {active && (
+      <motion.div layoutId="activeTab" className="active-indicator"
+        style={{ position: 'absolute', bottom: -2, left: 0, right: 0, height: 4, background: 'var(--acid)', border: '2px solid var(--ink)' }}
+      />
+    )}
+  </button>
+))
 
 export default function Auth() {
   const [loading, setLoading] = useState(false)
@@ -11,135 +25,139 @@ export default function Auth() {
   const [verifying, setVerifying] = useState(false)
   const [isLogin, setIsLogin] = useState(true)
 
-  const handleAuth = async (e) => {
+  const handleAuth = useCallback(async (e) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
-
-    if (isLogin) {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
-      if (error) setError(error.message)
-    } else {
-      const { data, error } = await supabase.auth.signUp({ email, password })
-      if (error) {
-        setError(error.message)
-      } else {
-        // If sign up success, check if confirmation sent
-        if (data.user && data.session) {
-          // Auto login if no confirm needed (unlikely on cloud)
-        } else {
-          setVerifying(true)
-        }
-      }
+    const params = { email, password }
+    const { data, error } = isLogin
+      ? await supabase.auth.signInWithPassword(params)
+      : await supabase.auth.signUp(params)
+    if (error) {
+      setError(error.message)
+    } else if (!isLogin && (!data.user || !data.session)) {
+      setVerifying(true)
     }
     setLoading(false)
-  }
+  }, [isLogin, email, password])
 
-  const handleVerify = async (e) => {
+  const handleVerify = useCallback(async (e) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
-
-    const { error } = await supabase.auth.verifyOtp({
-      email,
-      token: otp,
-      type: 'signup'
-    })
-
+    const { error } = await supabase.auth.verifyOtp({ email, token: otp, type: 'signup' })
     if (error) setError(error.message)
     setLoading(false)
-  }
+  }, [email, otp])
 
-  if (verifying) {
-    return (
-      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="auth-container">
-        <div className="auth-card">
-          <h2 className="auth-title">CHECK EMAIL</h2>
-          <p className="auth-subtitle">Enter 6-digit code sent to {email}</p>
-          
-          <form onSubmit={handleVerify}>
-            {error && <div className="auth-error">{error}</div>}
-            <div className="auth-field">
-              <input
-                className="auth-input"
-                type="text"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                placeholder="000000"
-                maxLength={6}
-                required
-              />
-            </div>
-            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="auth-submit" disabled={loading}>
-              {loading ? '...' : 'VERIFY'}
-            </motion.button>
-            <button type="button" className="auth-link-btn" onClick={() => setVerifying(false)}>
-              Back to Sign In
-            </button>
-          </form>
+  const toggleMode = useCallback((tab) => {
+    setIsLogin(tab === 'LOGIN')
+    setError(null)
+  }, [])
+
+  const cardContent = verifying ? (
+    <div className="text-center">
+      <h2 className="auth-title mb-3">CHECK EMAIL</h2>
+      <p className="auth-subtitle mb-4">Enter 8-digit code sent to {email}</p>
+      <form onSubmit={handleVerify}>
+        {error && <div className="auth-error mb-3">{error}</div>}
+        <div className="mb-4">
+          <input
+            className="form-control text-center fs-2"
+            type="text"
+            value={otp}
+            onChange={(e) => setOtp(e.target.value)}
+            placeholder="000000"
+            maxLength={8}
+            required
+          />
         </div>
-      </motion.div>
-    )
-  }
+        <button className="btn btn-primary w-100 mb-3" disabled={loading}>
+          {loading ? '...' : 'VERIFY'}
+        </button>
+        <button type="button" className="btn btn-link text-dark text-decoration-none" onClick={() => setVerifying(false)}>
+          Back to Sign In
+        </button>
+      </form>
+    </div>
+  ) : (
+    <>
+      <div className="auth-tabs d-flex mb-4">
+        <AuthTab tab="LOGIN" active={isLogin} onClick={toggleMode} />
+        <AuthTab tab="SIGNUP" active={!isLogin} onClick={toggleMode} />
+      </div>
+      <form onSubmit={handleAuth}>
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              className="auth-error mb-3"
+            >
+              {error}
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <div className="mb-3">
+          <label className="form-label">Email Address</label>
+          <input
+            className="form-control"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            required
+          />
+        </div>
+        <div className="mb-4">
+          <label className="form-label">Password</label>
+          <input
+            className="form-control"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            required
+          />
+        </div>
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          className="btn btn-primary w-100 py-3"
+          disabled={loading}
+        >
+          {loading ? '...' : (isLogin ? 'GO' : 'JOIN')}
+        </motion.button>
+      </form>
+    </>
+  )
 
   return (
-    <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} className="auth-container">
-      <div className="auth-card">
-        <div className="auth-tabs">
-          {['LOGIN', 'SIGNUP'].map((tab) => (
-            <button 
-              key={tab}
-              className={`auth-tab${(tab === 'LOGIN') === isLogin ? ' active' : ''}`}
-              onClick={() => { setIsLogin(tab === 'LOGIN'); setError(null); }}
-            >
-              {tab}
-              {(tab === 'LOGIN') === isLogin && (
-                <motion.div layoutId="activeTab" className="active-indicator"
-                  style={{ position: 'absolute', bottom: -2, left: 0, right: 0, height: 4, background: 'var(--acid)', border: '2px solid var(--ink)' }}
-                />
-              )}
-            </button>
-          ))}
+    <div className="auth-page-wrapper position-relative">
+      <div className="bg-decor shape-circle d-none d-lg-block"></div>
+      <div className="bg-decor shape-square d-none d-lg-block"></div>
+
+      <div className="auth-split">
+        {/* Left: Brand */}
+        <div className="auth-brand-side text-center">
+          <div className="mascot-container mb-4">
+            <img src="/mascot.png" alt="ToDope Mascot" className="mascot-img" />
+          </div>
+          <h1 className="app-title mb-0">To<span className="acid-dot">Do</span>pe</h1>
+          <div className="brand-badge">GET SH*T DONE</div>
         </div>
 
-        <form onSubmit={handleAuth}>
-          <AnimatePresence>
-            {error && (
-              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="auth-error">
-                {error}
-              </motion.div>
-            )}
-          </AnimatePresence>
-          
-          <div className="auth-field">
-            <label className="auth-label">Email Address</label>
-            <input
-              className="auth-input"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-            />
-          </div>
-
-          <div className="auth-field">
-            <label className="auth-label">Password</label>
-            <input
-              className="auth-input"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-            />
-          </div>
-
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="auth-submit" disabled={loading}>
-            {loading ? '...' : (isLogin ? 'GO' : 'JOIN')}
-          </motion.button>
-        </form>
+        {/* Right: Card */}
+        <div className="auth-form-side">
+          <motion.div
+            initial={{ opacity: 0, x: 40 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="auth-card p-4 p-md-5"
+          >
+            {cardContent}
+          </motion.div>
+        </div>
       </div>
-    </motion.div>
+    </div>
   )
 }

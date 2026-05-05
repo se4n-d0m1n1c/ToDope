@@ -9,8 +9,10 @@ function App() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // async-parallel: Start promise early
+    const sessionPromise = supabase.auth.getSession()
+
+    sessionPromise.then(({ data: { session } }) => {
       setSession(session)
       setLoading(false)
     })
@@ -25,9 +27,12 @@ function App() {
 
   if (loading) return null
 
+  // rendering-hoist-jsx: Auth has full-width layout, render outside app-wrapper
+  if (!session) return <Auth />
+
   return (
     <div className="app-wrapper">
-      {!session ? <Auth /> : <TodoApp user={session.user} />}
+      <TodoApp user={session.user} />
     </div>
   )
 }
